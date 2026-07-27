@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from conftest import requires_repos
 
 from chainmcp import tools
 
@@ -23,6 +24,7 @@ def _assert_json_safe(result: dict) -> None:
 # --------------------------------------------------------------------------- #
 # optimize_slotting
 # --------------------------------------------------------------------------- #
+@requires_repos("logistics-digital-twin")
 def test_optimize_slotting_valid():
     r = tools.optimize_slotting(top_moves=5)
     assert r["ok"] is True
@@ -47,6 +49,7 @@ def test_optimize_slotting_rejects_bad_input():
 # --------------------------------------------------------------------------- #
 # pack_cartons
 # --------------------------------------------------------------------------- #
+@requires_repos("logistics-digital-twin")
 def test_pack_cartons_seeded_default():
     r = tools.pack_cartons()
     assert r["ok"] is True
@@ -58,6 +61,7 @@ def test_pack_cartons_seeded_default():
     _assert_json_safe(r)
 
 
+@requires_repos("logistics-digital-twin")
 def test_pack_cartons_custom_items():
     items = [
         {"length_cm": 30, "width_cm": 20, "height_cm": 15, "weight_kg": 2.0, "quantity": 12},
@@ -80,6 +84,7 @@ def test_pack_cartons_rejects_bad_items():
 # --------------------------------------------------------------------------- #
 # route_deliveries
 # --------------------------------------------------------------------------- #
+@requires_repos("route-optimizer")
 def test_route_deliveries_beats_or_matches_baseline():
     r = tools.route_deliveries(instance="n30", solution_limit=100)
     assert r["ok"] is True
@@ -94,6 +99,7 @@ def test_route_deliveries_beats_or_matches_baseline():
     _assert_json_safe(r)
 
 
+@requires_repos("route-optimizer")
 def test_route_deliveries_is_deterministic():
     a = tools.route_deliveries(instance="tiny", solution_limit=50)
     b = tools.route_deliveries(instance="tiny", solution_limit=50)
@@ -110,6 +116,7 @@ def test_route_deliveries_rejects_unknown_instance():
 # --------------------------------------------------------------------------- #
 # analyze_discount_leakage
 # --------------------------------------------------------------------------- #
+@requires_repos("sales-kpi-analytics")
 def test_leakage_totals_reconcile():
     r = tools.analyze_discount_leakage(top_n=5)
     assert r["ok"] is True
@@ -136,6 +143,7 @@ def test_leakage_rejects_bad_policy():
 # --------------------------------------------------------------------------- #
 # forecast_demand  (slowest: runs the decision-chain ingest once, then cached)
 # --------------------------------------------------------------------------- #
+@requires_repos("decision-chain")
 def test_forecast_demand_scoreboard_is_mase_honest():
     r = tools.forecast_demand()
     assert r["ok"] is True
@@ -153,6 +161,7 @@ def test_forecast_demand_scoreboard_is_mase_honest():
     _assert_json_safe(r)
 
 
+@requires_repos("decision-chain")
 def test_forecast_demand_single_sku():
     summary = tools.forecast_demand(demand_class="smooth")
     sku = summary["demand_class"]["top_skus_by_forecast_units"][0]["sku"]
@@ -164,6 +173,7 @@ def test_forecast_demand_single_sku():
     _assert_json_safe(r)
 
 
+@requires_repos("decision-chain")  # the tracked-SKU check needs the real pipeline output
 def test_forecast_demand_rejects_unknown_sku():
     r = tools.forecast_demand(sku="NOT-A-SKU")
     assert r["ok"] is False
@@ -173,6 +183,7 @@ def test_forecast_demand_rejects_unknown_sku():
 # --------------------------------------------------------------------------- #
 # portfolio_status
 # --------------------------------------------------------------------------- #
+@requires_repos("portfolio-ops", "route-optimizer")  # audits the local route-optimizer checkout
 def test_portfolio_status_scorecard():
     r = tools.portfolio_status("route-optimizer", run_tests=False)
     assert r["ok"] is True

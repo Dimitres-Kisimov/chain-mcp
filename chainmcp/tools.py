@@ -260,11 +260,8 @@ def _validate_items(items: list[dict]) -> list[dict]:
 @_safe
 def pack_cartons(items: list[dict] | None = None, container: dict | None = None) -> dict:
     """FFD carton packing for given items or the seeded dataset. See PACKING_DATA_NOTE."""
-    ensure_repo("logistics-digital-twin")
-    from logitwin.data import Carton, Container
-    from logitwin.data import dataset as lt_dataset
-    from logitwin.packing import ffd_pack, naive_pack
-
+    # Validate ALL caller input before touching the engine repo: bad input must be
+    # reported as invalid_input (fail fast), never masked by engine_unavailable.
     if container is not None:
         _require(isinstance(container, dict), "container must be an object")
         for k in ("length_cm", "width_cm", "height_cm", "max_weight_kg"):
@@ -273,6 +270,14 @@ def pack_cartons(items: list[dict] | None = None, container: dict | None = None)
                     isinstance(container[k], int | float) and 0 < float(container[k]) <= 5000,
                     f"container.{k} must be a number in (0, 5000]",
                 )
+    expanded = _validate_items(items) if items is not None else None
+
+    ensure_repo("logistics-digital-twin")
+    from logitwin.data import Carton, Container
+    from logitwin.data import dataset as lt_dataset
+    from logitwin.packing import ffd_pack, naive_pack
+
+    if container is not None:
         box = Container(
             length=float(container.get("length_cm", 120.0)),
             width=float(container.get("width_cm", 80.0)),
@@ -282,11 +287,10 @@ def pack_cartons(items: list[dict] | None = None, container: dict | None = None)
     else:
         box = Container()
 
-    if items is None:
+    if expanded is None:
         cartons = lt_dataset()["cartons"]
         source = "synthetic seeded 60-carton dataset (logistics-digital-twin, seed 42)"
     else:
-        expanded = _validate_items(items)
         cartons = [
             Carton(
                 id=i,

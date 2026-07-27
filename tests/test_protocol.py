@@ -17,6 +17,7 @@ import threading
 from pathlib import Path
 
 import pytest
+from conftest import requires_repos
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -38,6 +39,14 @@ _REQUESTS = [
         "id": 3,
         "method": "tools/call",
         "params": {"name": "analyze_discount_leakage", "arguments": {"top_n": 3}},
+    },
+    # Self-contained tools/call: input validation rejects this before any engine
+    # import, so the round-trip works even where the sibling repos are absent (CI).
+    {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": {"name": "analyze_discount_leakage", "arguments": {"policy_discount_pct": 150}},
     },
 ]
 
@@ -122,6 +131,7 @@ def test_tools_list_carries_honesty_labels(stdio_session):
         assert ("SYNTHETIC" in desc) or ("REAL data" in desc) or ("real local" in desc), t["name"]
 
 
+@requires_repos("sales-kpi-analytics")  # the valid call runs the real leakage engine
 def test_tools_call_returns_structured_result(stdio_session):
     _lines, by_id = stdio_session
     result = by_id[3]["result"]
@@ -131,6 +141,16 @@ def test_tools_call_returns_structured_result(stdio_session):
     assert payload["total_leakage_eur"] > 0
     assert len(payload["top_offenders_by_sales_rep"]) == 3
     assert "SYNTHETIC" in payload["data_note"]
+
+
+def test_tools_call_invalid_input_is_structured_error(stdio_session):
+    """Engine-free tools/call round-trip: validation rejects before any engine import."""
+    _lines, by_id = stdio_session
+    result = by_id[4]["result"]
+    payload = result.get("structuredContent") or json.loads(result["content"][0]["text"])
+    assert payload["ok"] is False
+    assert payload["error_type"] == "invalid_input"
+    assert "policy_discount_pct" in payload["error"]
 
 
 def test_stdout_is_protocol_frames_only(stdio_session):
