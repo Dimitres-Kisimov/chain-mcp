@@ -1,0 +1,67 @@
+# chain-mcp CI
+#
+# HONEST TEST SPLIT — the engine tools import from SIBLING portfolio repos
+# (decision-chain, logistics-digital-twin, route-optimizer, sales-kpi-analytics,
+# portfolio-ops) that are private local checkouts and do NOT exist in CI.
+#
+#   RUN IN CI (self-contained, 10 tests):
+#     - all input-validation tests (validation runs before any engine import)
+#     - the missing-repo fallback test (engine_unavailable structured error)
+#     - the JSON-RPC stdio protocol tests: initialize handshake, tools/list
+#       schema + honesty labels, engine-free tools/call round-trip, and
+#       stdout-purity (protocol frames only)
+#
+#   SKIPPED IN CI (engine-backed, 11 tests):
+#     - tests asserting real engine output (slotting, packing, routing,
+#       leakage, forecasting, portfolio audit). tests/conftest.py marks each
+#       with skipif + an explicit reason when its sibling repo is absent.
+#
+# CHAINMCP_ROOT is pointed at an empty directory below so the skip behaviour is
+# deliberate and visible, not an accident of the runner's filesystem layout.
+# The same split is reproducible locally:
+#   CHAINMCP_ROOT=<empty dir> python -m pytest   ->  10 passed, 11 skipped
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Simulate "no sibling repos" explicitly (see header comment).
+      CHAINMCP_ROOT: ${{ github.workspace }}/.no-siblings
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        # mcp + the engine-adjacent runtime deps the package imports at module
+        # level, plus lint/test tooling and matplotlib for the deliverable.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install mcp numpy pandas scipy ortools ruff pytest matplotlib
+
+      - name: Create empty sibling root
+        run: mkdir -p "$CHAINMCP_ROOT"
+
+      - name: Lint (ruff)
+        run: python -m ruff check .
+
+      - name: Test (protocol + validation; engine tests skip with reasons)
+        run: python -m pytest -rs
+
+      - name: Build one-pager deliverable
+        # The script prints ASCII-only status lines and exits non-zero if the
+        # rendered PDF is suspiciously small (<= 10 KB), which fails the job.
+        run: python tools/make_onepager.py
+
+      - name: Upload one-pager artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chain-mcp-onepager
+          path: deliverables/chain_mcp_onepager.pdf

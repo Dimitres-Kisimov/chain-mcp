@@ -62,7 +62,7 @@ Sanity check from the repo folder:
 
 ```
 python -m chainmcp   # starts the server on stdio (Ctrl+C / close stdin to stop)
-python -m pytest -q  # 20 tests, including a live JSON-RPC handshake
+python -m pytest -q  # 21 tests, including a live JSON-RPC handshake
 ```
 
 ### Claude Desktop
