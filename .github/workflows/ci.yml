@@ -4,12 +4,15 @@
 # (decision-chain, logistics-digital-twin, route-optimizer, sales-kpi-analytics,
 # portfolio-ops) that are private local checkouts and do NOT exist in CI.
 #
-#   RUN IN CI (self-contained, 10 tests):
+#   RUN IN CI (self-contained, 42 tests):
 #     - all input-validation tests (validation runs before any engine import)
 #     - the missing-repo fallback test (engine_unavailable structured error)
 #     - the JSON-RPC stdio protocol tests: initialize handshake, tools/list
 #       schema + honesty labels, engine-free tools/call round-trip, and
 #       stdout-purity (protocol frames only)
+#     - the tool-contract / schema validation tests (registry vs implementation
+#       vs README agreement, typed-schema completeness, request/response
+#       round-trip, catalog-report freshness) -- all engine-free
 #
 #   SKIPPED IN CI (engine-backed, 11 tests):
 #     - tests asserting real engine output (slotting, packing, routing,
@@ -19,7 +22,7 @@
 # CHAINMCP_ROOT is pointed at an empty directory below so the skip behaviour is
 # deliberate and visible, not an accident of the runner's filesystem layout.
 # The same split is reproducible locally:
-#   CHAINMCP_ROOT=<empty dir> python -m pytest   ->  10 passed, 11 skipped
+#   CHAINMCP_ROOT=<empty dir> python -m pytest   ->  42 passed, 11 skipped
 name: ci
 
 on:
@@ -51,6 +54,12 @@ jobs:
 
       - name: Lint (ruff)
         run: python -m ruff check .
+
+      - name: Validate tool contract (schema + registry/docs consistency)
+        # Introspects the served tool registry, asserts every schema is complete
+        # and typed, and regenerates the deterministic catalog snapshot. Exits
+        # non-zero on any contract violation.
+        run: python -m chainmcp.contract
 
       - name: Test (protocol + validation; engine tests skip with reasons)
         run: python -m pytest -rs

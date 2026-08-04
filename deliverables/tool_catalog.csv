@@ -1,0 +1,7 @@
+tool,source_repo,n_params,required_params,typed_params,valid_sample_accepted,invalid_sample_rejected,error_response_valid
+forecast_demand,decision-chain,3,,3,true,true,true
+optimize_slotting,logistics-digital-twin,2,,2,true,true,true
+pack_cartons,logistics-digital-twin,2,,2,true,true,true
+route_deliveries,route-optimizer,2,,2,true,true,true
+analyze_discount_leakage,sales-kpi-analytics,2,,2,true,true,true
+portfolio_status,portfolio-ops,2,repo,2,true,true,true

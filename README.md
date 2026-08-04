@@ -49,6 +49,15 @@ Every tool validates its input, and every failure — bad input, missing source
 repo, engine error — comes back as a structured error result. The server does
 not crash on a tool call.
 
+**Contract-validated.** A machine-checked schema layer
+(`chainmcp/contract.py`, run with `python -m chainmcp.contract`) introspects the
+tools the server actually serves and asserts, for all six, that the registry,
+the tool implementations, and this catalog table stay in agreement; that every
+served `inputSchema` is a valid JSON Schema of typed parameters; and that a
+sample request/response round-trips against the real served contract. It emits a
+deterministic snapshot — [`deliverables/tool_catalog.md`](deliverables/tool_catalog.md)
+(and `.csv`) — that the test suite regenerates so it cannot go stale.
+
 ## Setup
 
 Requires Python 3.11+ and the source repos checked out locally (they are
@@ -61,8 +70,9 @@ pip install mcp numpy pandas scipy ortools
 Sanity check from the repo folder:
 
 ```
-python -m chainmcp   # starts the server on stdio (Ctrl+C / close stdin to stop)
-python -m pytest -q  # 21 tests, including a live JSON-RPC handshake
+python -m chainmcp           # starts the server on stdio (Ctrl+C / close stdin to stop)
+python -m pytest -q          # 53 tests: tool calls, JSON-RPC handshake, contract validation
+python -m chainmcp.contract  # validate the tool contract + regenerate the catalog snapshot
 ```
 
 ### Claude Desktop
@@ -143,8 +153,10 @@ chainmcp/
   config.py    # source-repo resolution (env-overridable), graceful failure
   tools.py     # the six tools: pure functions, structured results, never raise
   server.py    # FastMCP wiring, stdio transport, stderr-only logging
+  contract.py  # tool-contract / schema validation + catalog-report generator
   __main__.py  # python -m chainmcp
-tests/         # direct tool calls, validation, missing-repo, JSON-RPC handshake
+tests/         # tool calls, input validation, missing-repo, JSON-RPC handshake, contract
+deliverables/  # tool_catalog.md + .csv (contract snapshot), one-pager PDF
 docs/BUSINESS_CASE.md
 CREDITS.md
 ```

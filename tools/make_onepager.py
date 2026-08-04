@@ -25,6 +25,18 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT_PDF = ROOT / "deliverables" / "chain_mcp_onepager.pdf"
 MIN_BYTES = 10 * 1024
 
+# Fixed PDF metadata for a reproducible build: CreationDate=None drops the
+# wall-clock timestamp, and pinned Creator/Producer make the bytes independent
+# of the installed matplotlib version.
+PDF_METADATA = {
+    "Title": "chain-mcp one-pager",
+    "Author": "Dimitres Kisimov",
+    "Subject": "MCP server exposing portfolio optimization/analytics engines as tools",
+    "Creator": "chain-mcp make_onepager.py",
+    "Producer": "chain-mcp make_onepager.py",
+    "CreationDate": None,
+}
+
 # A4 portrait in mm; the axes uses these as data coordinates (y grows downward).
 PAGE_W, PAGE_H = 210.0, 297.0
 MARGIN = 13.0
@@ -127,7 +139,7 @@ def draw(fig):
             fontsize=9, color="#cfd8e3", va="center")
     ax.text(PAGE_W - MARGIN, 8.2, "Dimitres Kisimov", fontsize=9, color="#cfd8e3",
             va="center", ha="right")
-    ax.text(PAGE_W - MARGIN, 14.2, "stdio transport | official mcp SDK | 21 tests",
+    ax.text(PAGE_W - MARGIN, 14.2, "stdio transport | official mcp SDK | 53 tests",
             fontsize=7.5, color="#9fb0c3", va="center", ha="right")
 
     # ------------------------------------------------------------ what MCP is
@@ -211,7 +223,7 @@ def draw(fig):
             color=INK, va="top", linespacing=1.4)
 
     ax.text(MARGIN, PAGE_H - 7.5,
-            "Repo: chain-mcp (local) | Verify: python -m pytest (21 tests incl. live "
+            "Repo: chain-mcp (local) | Verify: python -m pytest (53 tests incl. live "
             "JSON-RPC handshake) + python -m ruff check .",
             fontsize=6.8, color=MUTED, va="center")
     ax.text(PAGE_W - MARGIN, PAGE_H - 7.5, "July 2026", fontsize=6.8, color=MUTED,
@@ -227,7 +239,9 @@ def main() -> int:
     OUT_PDF.parent.mkdir(parents=True, exist_ok=True)
     fig = plt.figure(figsize=(PAGE_W / 25.4, PAGE_H / 25.4))
     draw(fig)
-    fig.savefig(OUT_PDF, format="pdf")
+    # Deterministic metadata: no wall-clock CreationDate and version-independent
+    # Creator/Producer, so re-runs produce a byte-identical PDF.
+    fig.savefig(OUT_PDF, format="pdf", metadata=PDF_METADATA)
     if args.preview:
         fig.savefig(args.preview, format="png", dpi=150)
         print(f"[ok] preview written: {args.preview}")
