@@ -71,7 +71,7 @@ Sanity check from the repo folder:
 
 ```
 python -m chainmcp           # starts the server on stdio (Ctrl+C / close stdin to stop)
-python -m pytest -q          # 53 tests: tool calls, JSON-RPC handshake, contract validation
+python -m pytest -q          # 116 tests: tool calls, input-validation matrix, JSON-RPC handshake, contract validation
 python -m chainmcp.contract  # validate the tool contract + regenerate the catalog snapshot
 ```
 
@@ -155,7 +155,7 @@ chainmcp/
   server.py    # FastMCP wiring, stdio transport, stderr-only logging
   contract.py  # tool-contract / schema validation + catalog-report generator
   __main__.py  # python -m chainmcp
-tests/         # tool calls, input validation, missing-repo, JSON-RPC handshake, contract
+tests/         # tool calls, input-validation matrix, missing-repo, JSON-RPC handshake, contract
 deliverables/  # tool_catalog.md + .csv (contract snapshot), one-pager PDF
 docs/BUSINESS_CASE.md
 CREDITS.md

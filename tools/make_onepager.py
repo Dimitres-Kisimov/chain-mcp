@@ -139,7 +139,7 @@ def draw(fig):
             fontsize=9, color="#cfd8e3", va="center")
     ax.text(PAGE_W - MARGIN, 8.2, "Dimitres Kisimov", fontsize=9, color="#cfd8e3",
             va="center", ha="right")
-    ax.text(PAGE_W - MARGIN, 14.2, "stdio transport | official mcp SDK | 53 tests",
+    ax.text(PAGE_W - MARGIN, 14.2, "stdio transport | official mcp SDK | 116 tests",
             fontsize=7.5, color="#9fb0c3", va="center", ha="right")
 
     # ------------------------------------------------------------ what MCP is
@@ -223,7 +223,7 @@ def draw(fig):
             color=INK, va="top", linespacing=1.4)
 
     ax.text(MARGIN, PAGE_H - 7.5,
-            "Repo: chain-mcp (local) | Verify: python -m pytest (53 tests incl. live "
+            "Repo: chain-mcp (local) | Verify: python -m pytest (116 tests incl. live "
             "JSON-RPC handshake) + python -m ruff check .",
             fontsize=6.8, color=MUTED, va="center")
     ax.text(PAGE_W - MARGIN, PAGE_H - 7.5, "July 2026", fontsize=6.8, color=MUTED,

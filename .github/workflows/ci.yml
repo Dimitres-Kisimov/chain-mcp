@@ -4,8 +4,11 @@
 # (decision-chain, logistics-digital-twin, route-optimizer, sales-kpi-analytics,
 # portfolio-ops) that are private local checkouts and do NOT exist in CI.
 #
-#   RUN IN CI (self-contained, 42 tests):
-#     - all input-validation tests (validation runs before any engine import)
+#   RUN IN CI (self-contained, 105 tests):
+#     - the input-validation matrix: bad payloads (wrong type / below-min /
+#       above-max / malformed structure / off-limits repo) all map to the
+#       documented invalid_input envelope, and valid boundary values pass
+#       validation -- all before any engine import
 #     - the missing-repo fallback test (engine_unavailable structured error)
 #     - the JSON-RPC stdio protocol tests: initialize handshake, tools/list
 #       schema + honesty labels, engine-free tools/call round-trip, and
@@ -22,7 +25,7 @@
 # CHAINMCP_ROOT is pointed at an empty directory below so the skip behaviour is
 # deliberate and visible, not an accident of the runner's filesystem layout.
 # The same split is reproducible locally:
-#   CHAINMCP_ROOT=<empty dir> python -m pytest   ->  42 passed, 11 skipped
+#   CHAINMCP_ROOT=<empty dir> python -m pytest   ->  105 passed, 11 skipped
 name: ci
 
 on:
