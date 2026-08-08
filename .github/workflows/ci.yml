@@ -4,7 +4,7 @@
 # (decision-chain, logistics-digital-twin, route-optimizer, sales-kpi-analytics,
 # portfolio-ops) that are private local checkouts and do NOT exist in CI.
 #
-#   RUN IN CI (self-contained, 105 tests):
+#   RUN IN CI (self-contained, 128 tests):
 #     - the input-validation matrix: bad payloads (wrong type / below-min /
 #       above-max / malformed structure / off-limits repo) all map to the
 #       documented invalid_input envelope, and valid boundary values pass
@@ -16,8 +16,13 @@
 #     - the tool-contract / schema validation tests (registry vs implementation
 #       vs README agreement, typed-schema completeness, request/response
 #       round-trip, catalog-report freshness) -- all engine-free
+#     - the result-provenance tests: every error result carries the
+#       machine-readable provenance block (identity only -- no data claims),
+#       the envelope REJECTS results without provenance, the provenance
+#       registry covers exactly the served catalog, and git_head resolves
+#       real / detached / packed / malformed .git states without guessing
 #
-#   SKIPPED IN CI (engine-backed, 11 tests):
+#   SKIPPED IN CI (engine-backed, 17 tests):
 #     - tests asserting real engine output (slotting, packing, routing,
 #       leakage, forecasting, portfolio audit). tests/conftest.py marks each
 #       with skipif + an explicit reason when its sibling repo is absent.
@@ -25,7 +30,7 @@
 # CHAINMCP_ROOT is pointed at an empty directory below so the skip behaviour is
 # deliberate and visible, not an accident of the runner's filesystem layout.
 # The same split is reproducible locally:
-#   CHAINMCP_ROOT=<empty dir> python -m pytest   ->  105 passed, 11 skipped
+#   CHAINMCP_ROOT=<empty dir> python -m pytest   ->  128 passed, 17 skipped
 name: ci
 
 on:

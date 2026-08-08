@@ -147,7 +147,8 @@ def test_leakage_rejects_bad_policy():
 def test_forecast_demand_scoreboard_is_mase_honest():
     r = tools.forecast_demand()
     assert r["ok"] is True
-    assert r["provenance"] == {"history": "real", "forecasts": "derived"}
+    # per-field labels live in the machine-readable provenance block
+    assert r["provenance"]["data"]["fields"] == {"history": "real", "forecasts": "derived"}
     board = r["class_scoreboard"]
     assert len(board) > 0
     classes = {row["class"] for row in board}

@@ -21,6 +21,7 @@ import logging
 from typing import Any
 
 from chainmcp.config import EngineUnavailableError, ensure_repo, portfolio_root
+from chainmcp.provenance import build_provenance
 
 log = logging.getLogger("chainmcp.tools")
 
@@ -30,20 +31,45 @@ class InvalidInputError(ValueError):
 
 
 def _safe(fn):
-    """Turn any exception into a structured error result — the server never crashes."""
+    """Turn any exception into a structured error result — the server never crashes.
+
+    Also attaches the machine-readable ``provenance`` block (see
+    :mod:`chainmcp.provenance`) to EVERY result, success or error, so no tool
+    can forget it. A tool may refine its data facts at call time by returning
+    a ``_provenance`` override key (popped here, never serialized); error
+    results carry identity only — no data claims, nothing was computed.
+    """
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> dict:
         try:
-            return fn(*args, **kwargs)
+            result = fn(*args, **kwargs)
+            override = result.pop("_provenance", None)
+            result["provenance"] = build_provenance(fn.__name__, override=override)
+            return result
         except EngineUnavailableError as e:
             log.warning("engine unavailable in %s: %s", fn.__name__, e)
-            return {"ok": False, "error_type": "engine_unavailable", "error": str(e)}
+            return {
+                "ok": False,
+                "error_type": "engine_unavailable",
+                "error": str(e),
+                "provenance": build_provenance(fn.__name__, error=True),
+            }
         except InvalidInputError as e:
-            return {"ok": False, "error_type": "invalid_input", "error": str(e)}
+            return {
+                "ok": False,
+                "error_type": "invalid_input",
+                "error": str(e),
+                "provenance": build_provenance(fn.__name__, error=True),
+            }
         except Exception as e:  # noqa: BLE001 - the whole point is: never crash
             log.exception("engine error in %s", fn.__name__)
-            return {"ok": False, "error_type": "engine_error", "error": f"{type(e).__name__}: {e}"}
+            return {
+                "ok": False,
+                "error_type": "engine_error",
+                "error": f"{type(e).__name__}: {e}",
+                "provenance": build_provenance(fn.__name__, error=True),
+            }
 
     return wrapper
 
@@ -114,7 +140,8 @@ def forecast_demand(
     result: dict[str, Any] = {
         "ok": True,
         "data_note": FORECAST_DATA_NOTE,
-        "provenance": {"history": "real", "forecasts": "derived"},
+        # per-field labels (history real / forecasts derived) now live in the
+        # machine-readable provenance block: provenance.data.fields
         "horizon_weeks": horizon_weeks,
         "n_tracked_skus": len(demand.skus),
         "class_scoreboard": winners,
@@ -311,7 +338,7 @@ def pack_cartons(items: list[dict] | None = None, container: dict | None = None)
     packed_ids = {p.carton_id for c in ffd.containers for p in c.placements}
     unplaced = [c.sku for c in cartons if c.id not in packed_ids]
 
-    return {
+    result: dict[str, Any] = {
         "ok": True,
         "data_note": PACKING_DATA_NOTE,
         "items_source": source,
@@ -337,6 +364,13 @@ def pack_cartons(items: list[dict] | None = None, container: dict | None = None)
             for ci, c in enumerate(ffd.containers)
         ],
     }
+    if expanded is not None:
+        # Caller data, not the seeded dataset: say so in the machine-readable
+        # provenance too, not just in the items_source text.
+        result["_provenance"] = {
+            "data": {"label": "caller-provided", "source": "caller-provided item list"}
+        }
+    return result
 
 
 # --------------------------------------------------------------------------- #

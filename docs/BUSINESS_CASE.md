@@ -24,9 +24,12 @@ engines I wrote myself rather than toy stubs:
 - **Typed tool contracts.** Each tool declares a JSON schema; bad input is
   rejected with a structured error instead of a crash or a silent guess.
 - **Honest results.** Every result carries a `data_note` (synthetic seeded
-  data by default; real UCI retail data where the source repo has it) and
-  provenance/assumption labels — the same discipline the source repos apply.
-  An assistant can only be as honest as its tools' outputs.
+  data by default; real UCI retail data where the source repo has it) and a
+  machine-readable `provenance` block — a canonical data label, the engine
+  repo and commit that computed the number, and a determinism flag — the same
+  discipline the source repos apply, but typed, so an agent can branch on it
+  instead of parsing prose. An assistant can only be as honest as its tools'
+  outputs.
 - **Operational robustness.** A missing repo, an engine exception, or invalid
   arguments never take the server down; the error result tells the caller
   exactly what to fix.

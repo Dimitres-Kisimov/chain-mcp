@@ -153,6 +153,27 @@ def test_tools_call_invalid_input_is_structured_error(stdio_session):
     assert "policy_discount_pct" in payload["error"]
 
 
+def test_tools_call_response_carries_provenance_over_the_wire(stdio_session):
+    """The machine-readable provenance block survives the real stdio transport.
+
+    Uses the engine-free error response (id=4), so this runs everywhere,
+    including CI with no sibling repos: even a failed call states which
+    server / tool / engine it came from.
+    """
+    from jsonschema import Draft202012Validator
+
+    from chainmcp.provenance import PROVENANCE_SCHEMA
+
+    _lines, by_id = stdio_session
+    result = by_id[4]["result"]
+    payload = result.get("structuredContent") or json.loads(result["content"][0]["text"])
+    prov = payload["provenance"]
+    Draft202012Validator(PROVENANCE_SCHEMA).validate(prov)
+    assert prov["tool"] == "analyze_discount_leakage"
+    assert prov["server"]["name"] == "chain-mcp"
+    assert prov["engine"]["repo"] == "sales-kpi-analytics"
+
+
 def test_stdout_is_protocol_frames_only(stdio_session):
     lines, _by_id = stdio_session
     assert len(lines) >= 3

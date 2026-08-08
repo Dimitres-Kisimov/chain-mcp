@@ -26,7 +26,15 @@ What it checks (honestly scoped)
    that its own validation rejects *before any engine import* (so this works
    offline, with no sibling repos), and the real structured error it returns is
    validated against :data:`RESULT_ENVELOPE_SCHEMA`, the documented common
-   result shape.
+   result shape — which now REQUIRES the machine-readable ``provenance`` block
+   (:mod:`chainmcp.provenance`) on every result, success or error.
+4. **Provenance consistency.** Every tool must have a provenance registry
+   entry whose engine repo matches the catalog declaration, and whose canonical
+   machine-readable data label agrees with the honesty wording of the served
+   description (``synthetic`` ⇔ "SYNTHETIC", ``real+derived`` ⇔ "REAL data",
+   ``real-local`` ⇔ "real local") — the typed label and the prose cannot drift
+   apart. The real offline error response must name the tool and its catalog
+   engine repo in its provenance block.
 
 Honesty notes
 -------------
@@ -55,7 +63,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
 
-from chainmcp import tools
+from chainmcp import provenance, tools
 from chainmcp.server import mcp
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -130,7 +138,11 @@ CATALOG_ORDER: tuple[str, ...] = tuple(CATALOG)
 # The documented common result envelope (see chainmcp/tools.py). NOT a
 # server-declared outputSchema — these tools return `dict`, so MCP serves none.
 # On error, `ok` is false and `error_type`/`error` are present; on success,
-# `ok` is true and a `data_note` string is present.
+# `ok` is true and a `data_note` string is present. EVERY result additionally
+# carries the machine-readable `provenance` block (chainmcp/provenance.py):
+# error results carry identity only (server / tool / engine — nothing was
+# computed, so no data claims); success results must also state their `data`
+# facts and `deterministic` flag.
 RESULT_ENVELOPE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -141,18 +153,32 @@ RESULT_ENVELOPE_SCHEMA: dict[str, Any] = {
             "enum": ["invalid_input", "engine_unavailable", "engine_error"],
         },
         "error": {"type": "string"},
+        "provenance": provenance.PROVENANCE_SCHEMA,
     },
-    "required": ["ok"],
+    "required": ["ok", "provenance"],
     "allOf": [
         {
             "if": {"properties": {"ok": {"const": False}}, "required": ["ok"]},
-            "then": {"required": ["ok", "error_type", "error"]},
+            "then": {"required": ["ok", "error_type", "error", "provenance"]},
         },
         {
             "if": {"properties": {"ok": {"const": True}}, "required": ["ok"]},
-            "then": {"required": ["ok", "data_note"]},
+            "then": {
+                "required": ["ok", "data_note", "provenance"],
+                "properties": {"provenance": {"required": ["data", "deterministic"]}},
+            },
         },
     ],
+}
+
+# Machine label (provenance registry) -> the human wording the served tool
+# description must contain. Keeps the machine-readable label and the prose
+# honesty labels from drifting apart. `caller-provided` is a call-time
+# override, never a registry default, so it has no marker here.
+_LABEL_MARKERS: dict[str, str] = {
+    "synthetic": "SYNTHETIC",
+    "real+derived": "REAL data",
+    "real-local": "real local",
 }
 
 
@@ -294,6 +320,37 @@ def _accepts(schema: dict[str, Any], instance: Any) -> bool:
         return False
 
 
+def check_provenance_registry(tool: dict[str, Any]) -> list[str]:
+    """Cross-check a tool's provenance registry entry against the served contract.
+
+    The machine-readable facts (engine repo, canonical data label) must agree
+    with the catalog declaration and with the human-readable data wording of
+    the served description — honesty that cannot drift.
+    """
+    problems: list[str] = []
+    name = tool["name"]
+    spec = provenance.TOOL_PROVENANCE.get(name)
+    if spec is None:
+        return [f"tool {name!r} has no provenance registry entry"]
+
+    if name in CATALOG and spec["engine_repo"] != CATALOG[name]["source_repo"]:
+        problems.append(
+            f"provenance engine repo {spec['engine_repo']!r} != catalog source repo "
+            f"{CATALOG[name]['source_repo']!r}"
+        )
+
+    label = spec["data"]["label"]
+    marker = _LABEL_MARKERS.get(label)
+    if marker is None:
+        problems.append(f"registry default data label {label!r} has no description marker")
+    elif marker not in (tool.get("description") or ""):
+        problems.append(
+            f"served description does not carry the {marker!r} wording its "
+            f"machine-readable data label ({label!r}) promises"
+        )
+    return problems
+
+
 def check_round_trip(tool: dict[str, Any]) -> list[str]:
     """Validate the illustrative request pair and the offline error response."""
     problems: list[str] = []
@@ -318,6 +375,20 @@ def check_round_trip(tool: dict[str, Any]) -> list[str]:
         problems.append(f"error response violates the result envelope: {exc.message}")
     if result.get("ok") is not False or result.get("error_type") != "invalid_input":
         problems.append(f"expected an invalid_input error response, got {result!r}")
+
+    # Provenance identity: the block must name this tool and its catalog engine.
+    prov = result.get("provenance")
+    if not isinstance(prov, dict):
+        problems.append("error response carries no provenance block")
+    else:
+        if prov.get("tool") != name:
+            problems.append(f"provenance names tool {prov.get('tool')!r}, expected {name!r}")
+        engine_repo = (prov.get("engine") or {}).get("repo")
+        if engine_repo != spec["source_repo"]:
+            problems.append(
+                f"provenance engine repo {engine_repo!r} != catalog source repo "
+                f"{spec['source_repo']!r}"
+            )
 
     return problems
 
@@ -346,6 +417,11 @@ def validate_catalog() -> dict[str, Any]:
         set_problems.append(
             f"README catalog {sorted(documented)} != catalog {sorted(canonical)}"
         )
+    if set(provenance.TOOL_PROVENANCE) != canonical:
+        set_problems.append(
+            f"provenance registry {sorted(provenance.TOOL_PROVENANCE)} "
+            f"!= catalog {sorted(canonical)}"
+        )
 
     per_tool: dict[str, dict[str, Any]] = {}
     by_name = {t["name"]: t for t in served}
@@ -356,9 +432,11 @@ def validate_catalog() -> dict[str, Any]:
             continue
         shape = check_schema_shape(tool)
         trip = check_round_trip(tool)
+        prov = check_provenance_registry(tool)
         schema = tool["input_schema"]
         props = schema.get("properties", {})
         defs = schema.get("$defs", {}) if isinstance(schema.get("$defs"), dict) else {}
+        prov_spec = provenance.TOOL_PROVENANCE.get(name, {})
         per_tool[name] = {
             "served": True,
             "source_repo": CATALOG[name]["source_repo"],
@@ -366,12 +444,16 @@ def validate_catalog() -> dict[str, Any]:
             "required": list(schema.get("required", [])),
             "typed_params": sum(1 for p in props.values() if _is_typed(p, defs)),
             "declares_output_schema": tool.get("output_schema") is not None,
+            "data_label": prov_spec.get("data", {}).get("label", "?"),
+            "deterministic": bool(prov_spec.get("deterministic", False)),
             "valid_sample_accepted": "illustrative valid request is rejected"
             not in " ".join(trip),
             "invalid_sample_rejected": "wrongly) accepted" not in " ".join(trip),
             "error_response_valid": all(not p.startswith("error response") for p in trip)
             and all(not p.startswith("expected an invalid_input") for p in trip),
-            "problems": shape + trip,
+            "provenance_consistent": not prov
+            and all(not p.startswith("provenance") for p in trip),
+            "problems": shape + trip + prov,
         }
 
     ok = not set_problems and all(not v["problems"] for v in per_tool.values())
@@ -406,14 +488,17 @@ _MD_HEADER = (
     "across re-runs; regenerated by the test suite so it cannot go stale.\n"
     "\n"
     "Every row below passed: schema completeness (typed parameters, valid "
-    "JSON Schema, `type: object`), registry/implementation/README agreement, and "
+    "JSON Schema, `type: object`), registry/implementation/README agreement, "
     "a round-trip (an illustrative valid request is accepted and a malformed one "
     "rejected by the served `inputSchema`; a real offline error response "
-    "validates against the documented result envelope).\n"
+    "validates against the documented result envelope), and provenance "
+    "consistency (the machine-readable data label agrees with the served "
+    "description's honesty wording).\n"
     "\n"
-    "| Tool | Source repo | Params | Required | Typed | Valid sample accepted | "
-    "Bad sample rejected | Error response valid |\n"
-    "|---|---|---|---|---|---|---|---|\n"
+    "| Tool | Source repo | Params | Required | Typed | Data label | "
+    "Deterministic | Valid sample accepted | Bad sample rejected | "
+    "Error response valid | Provenance consistent |\n"
+    "|---|---|---|---|---|---|---|---|---|---|---|\n"
 )
 
 _MD_FOOTER = (
@@ -422,9 +507,13 @@ _MD_FOOTER = (
     "exercise the schema, not to represent real data. These tools return a "
     "`dict`, so the served MCP contract declares no `outputSchema`; the "
     "\"Error response valid\" column checks real error responses against "
-    "chain-mcp's own documented result envelope (`ok` / `error_type` / `error`), "
-    "which is producible offline (input validation runs before any engine "
-    "import). See `chainmcp/contract.py`.\n"
+    "chain-mcp's own documented result envelope (`ok` / `error_type` / `error` "
+    "plus the machine-readable `provenance` block), which is producible offline "
+    "(input validation runs before any engine import). \"Data label\" is the "
+    "canonical machine-readable default from `chainmcp/provenance.py` "
+    "(`pack_cartons` switches to `caller-provided` when given an item list); "
+    "\"Deterministic\" means same input, same result, while the source-repo "
+    "checkout is unchanged. See `chainmcp/contract.py`.\n"
 )
 
 
@@ -435,9 +524,12 @@ def _row_cells(name: str, info: dict[str, Any]) -> list[str]:
         str(info["n_params"]),
         ", ".join(f"`{r}`" for r in info["required"]) if info["required"] else "—",
         f"{info['typed_params']}/{info['n_params']}",
+        f"`{info['data_label']}`",
+        "yes" if info["deterministic"] else "no (live repo state)",
         "yes" if info["valid_sample_accepted"] else "NO",
         "yes" if info["invalid_sample_rejected"] else "NO",
         "yes" if info["error_response_valid"] else "NO",
+        "yes" if info["provenance_consistent"] else "NO",
     ]
 
 
@@ -461,9 +553,12 @@ def render_csv(report: dict[str, Any] | None = None) -> str:
             "n_params",
             "required_params",
             "typed_params",
+            "data_label",
+            "deterministic",
             "valid_sample_accepted",
             "invalid_sample_rejected",
             "error_response_valid",
+            "provenance_consistent",
         ]
     )
     for name in CATALOG_ORDER:
@@ -475,9 +570,12 @@ def render_csv(report: dict[str, Any] | None = None) -> str:
                 info["n_params"],
                 " ".join(info["required"]),
                 info["typed_params"],
+                info["data_label"],
+                str(info["deterministic"]).lower(),
                 str(info["valid_sample_accepted"]).lower(),
                 str(info["invalid_sample_rejected"]).lower(),
                 str(info["error_response_valid"]).lower(),
+                str(info["provenance_consistent"]).lower(),
             ]
         )
     return buf.getvalue()
@@ -500,7 +598,8 @@ def main() -> int:
         info = report["tools"][name]
         status = "OK" if not info["problems"] else "FAIL"
         typed = f"{info.get('typed_params', 0)}/{info.get('n_params', 0)} typed"
-        print(f"  [{status}] {name:<26} {typed}  ({info.get('source_repo', '?')})")
+        label = info.get("data_label", "?")
+        print(f"  [{status}] {name:<26} {typed}  ({info.get('source_repo', '?')}, {label})")
         for p in info["problems"]:
             print(f"        - {p}")
     for p in report["set_problems"]:

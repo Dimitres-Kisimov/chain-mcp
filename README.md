@@ -34,6 +34,12 @@ on the real, public **UCI Online Retail II** dataset through a provenance-tagged
 pipeline, so its history is labelled `real` and its forecasts `derived`. No
 result is presented as stronger than its inputs.
 
+That honesty is also **machine-readable**: every result — success or error —
+carries a structured `provenance` block (see below) with a canonical data
+label, the engine repo and commit that computed it, and a determinism flag,
+so an agent can *branch* on what a number was computed on instead of parsing
+prose.
+
 ## Tool catalog
 
 | Tool | Engine (source repo) | What it does | Data |
@@ -53,10 +59,45 @@ not crash on a tool call.
 (`chainmcp/contract.py`, run with `python -m chainmcp.contract`) introspects the
 tools the server actually serves and asserts, for all six, that the registry,
 the tool implementations, and this catalog table stay in agreement; that every
-served `inputSchema` is a valid JSON Schema of typed parameters; and that a
-sample request/response round-trips against the real served contract. It emits a
-deterministic snapshot — [`deliverables/tool_catalog.md`](deliverables/tool_catalog.md)
+served `inputSchema` is a valid JSON Schema of typed parameters; that a
+sample request/response round-trips against the real served contract; and that
+each tool's machine-readable provenance agrees with the honesty wording of its
+served description. It emits a deterministic snapshot —
+[`deliverables/tool_catalog.md`](deliverables/tool_catalog.md)
 (and `.csv`) — that the test suite regenerates so it cannot go stale.
+
+## Machine-readable provenance
+
+Every result — success *or* error — carries a `provenance` block built by
+`chainmcp/provenance.py` and **required** by the contract layer's result
+envelope, so no tool can omit it and the shape cannot drift untested:
+
+```json
+"provenance": {
+  "schema_version": 1,
+  "server":  {"name": "chain-mcp", "version": "0.1.0", "commit": "<sha of this checkout>"},
+  "tool":    "optimize_slotting",
+  "engine":  {"repo": "logistics-digital-twin", "package": "logitwin",
+              "available": true, "commit": "<sha of the engine checkout>"},
+  "data":    {"label": "synthetic",
+              "source": "seeded warehouse dataset (logistics-digital-twin, seed 42)"},
+  "deterministic": true
+}
+```
+
+- **`data.label` is canonical**, not free text: `synthetic`, `real+derived`
+  (forecast history is real, forecasts derived — with per-field labels in
+  `data.fields`), `real-local` (repo audits), or `caller-provided`
+  (`pack_cartons` given an item list). The contract layer cross-checks each
+  label against the tool description's wording, so the machine label and the
+  prose cannot disagree.
+- **Commits are best-effort facts, never guesses**: read from the local
+  checkout's `.git` with stdlib file reads only; `null` when unresolvable.
+- **Error results make no data claims** — a failed call computed nothing, so
+  its block carries identity only (server / tool / engine).
+- **`deterministic` is scoped honestly**: same input, same result, while the
+  source-repo checkout is unchanged. `portfolio_status` audits live repo state
+  and is declared non-deterministic.
 
 ## Setup
 
@@ -71,7 +112,7 @@ Sanity check from the repo folder:
 
 ```
 python -m chainmcp           # starts the server on stdio (Ctrl+C / close stdin to stop)
-python -m pytest -q          # 116 tests: tool calls, input-validation matrix, JSON-RPC handshake, contract validation
+python -m pytest -q          # 145 tests: tool calls, input-validation matrix, JSON-RPC handshake, contract + provenance
 python -m chainmcp.contract  # validate the tool contract + regenerate the catalog snapshot
 ```
 
@@ -150,12 +191,13 @@ variable to set — the server keeps running.
 
 ```
 chainmcp/
-  config.py    # source-repo resolution (env-overridable), graceful failure
-  tools.py     # the six tools: pure functions, structured results, never raise
-  server.py    # FastMCP wiring, stdio transport, stderr-only logging
-  contract.py  # tool-contract / schema validation + catalog-report generator
-  __main__.py  # python -m chainmcp
-tests/         # tool calls, input-validation matrix, missing-repo, JSON-RPC handshake, contract
+  config.py      # source-repo resolution (env-overridable), graceful failure
+  tools.py       # the six tools: pure functions, structured results, never raise
+  server.py      # FastMCP wiring, stdio transport, stderr-only logging
+  contract.py    # tool-contract / schema validation + catalog-report generator
+  provenance.py  # machine-readable result provenance (registry, schema, builder)
+  __main__.py    # python -m chainmcp
+tests/           # tool calls, validation matrix, missing-repo, JSON-RPC handshake, contract, provenance
 deliverables/  # tool_catalog.md + .csv (contract snapshot), one-pager PDF
 docs/BUSINESS_CASE.md
 CREDITS.md
